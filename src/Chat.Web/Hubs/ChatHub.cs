@@ -13,7 +13,7 @@ using System.Threading.Tasks;
 
 namespace Chat.Web.Hubs
 {
-    [Authorize]
+    // Temporarily removed the [Authorize] attribute to allow access without authentication
     public class ChatHub : Hub
     {
         private readonly ApplicationDbContext _context;
@@ -52,6 +52,77 @@ namespace Chat.Web.Hubs
                     await Clients.Client(userId).SendAsync("newMessage", messageViewModel);
                     await Clients.Caller.SendAsync("newMessage", messageViewModel);
                 }
+            }
+        }
+
+        public async Task SendMessage(string roomName, string message)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(message.Trim()))
+                    return;
+
+                var userName = IdentityName;
+                var room = _context.Rooms.FirstOrDefault(r => r.Name == roomName);
+                
+                if (room == null)
+                {
+                    await Clients.Caller.SendAsync("onError", "Room not found");
+                    return;
+                }
+
+                // Check if it's a guest user or authenticated user
+                MessageViewModel messageViewModel;
+                if (userName.StartsWith("guest-"))
+                {
+                    // For guest users, we'll just create a message view model without saving to the database
+                    messageViewModel = new MessageViewModel
+                    {
+                        Id = 0, // Temporary ID
+                        Content = Regex.Replace(message, @"<.*?>", string.Empty),
+                        FromUserName = userName,
+                        FromFullName = "Guest User",
+                        Room = roomName,
+                        Avatar = "/images/default-avatar.png",
+                        Timestamp = DateTime.Now
+                    };
+                }
+                else
+                {
+                    // For authenticated users, get the user from the database
+                    var user = _context.Users.FirstOrDefault(u => u.UserName == userName);
+                    
+                    // Create and save the message to database
+                    var msg = new Message
+                    {
+                        Content = Regex.Replace(message, @"<.*?>", string.Empty),
+                        FromUser = user,
+                        ToRoom = room,
+                        Timestamp = DateTime.Now
+                    };
+
+                    _context.Messages.Add(msg);
+                    await _context.SaveChangesAsync();
+
+                    // Create the view model for the response
+                    messageViewModel = new MessageViewModel
+                    {
+                        Id = msg.Id,
+                        Content = msg.Content,
+                        FromUserName = user.UserName,
+                        FromFullName = user.FullName,
+                        Room = roomName,
+                        Avatar = user.Avatar,
+                        Timestamp = msg.Timestamp
+                    };
+                }
+
+                // Broadcast the message to all clients in the room
+                await Clients.Group(roomName).SendAsync("newMessage", messageViewModel);
+            }
+            catch (Exception ex)
+            {
+                await Clients.Caller.SendAsync("onError", "Error sending message: " + ex.Message);
             }
         }
 
@@ -98,10 +169,29 @@ namespace Chat.Web.Hubs
         {
             try
             {
-                var user = _context.Users.Where(u => u.UserName == IdentityName).FirstOrDefault();
-                var userViewModel = _mapper.Map<ApplicationUser, UserViewModel>(user);
-                userViewModel.Device = GetDevice();
-                userViewModel.CurrentRoom = "";
+                UserViewModel userViewModel;
+                // Check if we have an authenticated user
+                var userName = IdentityName;
+                if (userName.StartsWith("guest-"))
+                {
+                    // Create a guest user view model
+                    userViewModel = new UserViewModel
+                    {
+                        UserName = userName,
+                        FullName = "Guest User",
+                        Avatar = "/images/default-avatar.png", // Use a default avatar
+                        Device = GetDevice(),
+                        CurrentRoom = ""
+                    };
+                }
+                else
+                {
+                    // Get authenticated user from database
+                    var user = _context.Users.Where(u => u.UserName == userName).FirstOrDefault();
+                    userViewModel = _mapper.Map<ApplicationUser, UserViewModel>(user);
+                    userViewModel.Device = GetDevice();
+                    userViewModel.CurrentRoom = "";
+                }
 
                 // Store user connection in Redis
                 await _redisService.AddConnection(userViewModel, Context.ConnectionId);
@@ -139,7 +229,10 @@ namespace Chat.Web.Hubs
 
         private string IdentityName
         {
-            get { return Context.User.Identity.Name; }
+            get {
+                // Handle the case when there's no authenticated user
+                return Context.User?.Identity?.Name ?? "guest-" + Context.ConnectionId;
+            }
         }
 
         private string GetDevice()

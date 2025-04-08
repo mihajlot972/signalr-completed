@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.UI;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.HttpsPolicy;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Chat.Web.Data;
 using Microsoft.Extensions.Configuration;
@@ -32,6 +33,19 @@ namespace Chat.Web
 
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
+        {
+            // Add CORS services
+            services.AddCors(options =>
+            {
+                options.AddPolicy("AllowReactApp",
+                    builder =>
+                    {
+                        builder.WithOrigins("http://localhost:3000")
+                               .AllowAnyHeader()
+                               .AllowAnyMethod()
+                               .AllowCredentials();
+                    });
+            });
         {
             services.AddDbContext<ApplicationDbContext>(options =>
                 options.UseSqlServer(Configuration.GetConnectionString("DefaultConnection")));
@@ -83,6 +97,9 @@ namespace Chat.Web
 
             app.UseRouting();
 
+            // Apply CORS middleware - must be after UseRouting and before UseAuthentication
+            app.UseCors("AllowReactApp");
+
             app.UseAuthentication();
             app.UseAuthorization();
 
@@ -92,6 +109,68 @@ namespace Chat.Web
                 endpoints.MapControllers();
                 endpoints.MapHub<ChatHub>("/chatHub");
                 endpoints.MapHealthChecks("/health");
+                
+                // Add a route for /chat that serves the chat interface
+                endpoints.MapGet("/chat", async context => {
+                    // Serve the index page for the chat interface
+                    await context.Response.WriteAsync(@"
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SignalR Chat</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+        h1 { color: #333; }
+        #message-list { height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; }
+        #message-form { display: flex; }
+        #message-input { flex-grow: 1; padding: 5px; }
+        button { padding: 5px 15px; margin-left: 10px; }
+    </style>
+</head>
+<body>
+    <h1>SignalR Chat</h1>
+    <div id='message-list'></div>
+    <form id='message-form'>
+        <input type='text' id='message-input' placeholder='Type a message...' />
+        <button type='submit'>Send</button>
+    </form>
+
+    <script src='https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/5.0.0/signalr.min.js'></script>
+    <script>
+        const messageList = document.getElementById('message-list');
+        const messageForm = document.getElementById('message-form');
+        const messageInput = document.getElementById('message-input');
+
+        // Create connection
+        const connection = new signalR.HubConnectionBuilder()
+            .withUrl('/chatHub')
+            .build();
+
+        // Start connection
+        connection.start().catch(err => console.error(err));
+
+        // Handle new messages
+        connection.on('newMessage', function(message) {
+            const messageElement = document.createElement('div');
+            messageElement.textContent = `${message.fromUserName}: ${message.content}`;
+            messageList.appendChild(messageElement);
+            messageList.scrollTop = messageList.scrollHeight;
+        });
+
+        // Send message
+        messageForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            if (messageInput.value) {
+                // This would typically send to a specific room
+                connection.invoke('SendMessage', 'General', messageInput.value).catch(err => console.error(err));
+                messageInput.value = '';
+            }
+        });
+    </script>
+</body>
+</html>");
+                });
+                // This enables access to the chat API at 192.168.1.108:8080/chat
             });
         }
     }
