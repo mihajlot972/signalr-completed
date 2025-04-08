@@ -1,0 +1,48 @@
+version: "3.8"
+
+services:
+  chatapp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - db
+      - redis
+    ports:
+      - "8080:80"
+      - "8081:443"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ConnectionStrings__DefaultConnection=Server=db;Database=ChatDb;User=sa;Password=Pass@word1;MultipleActiveResultSets=true
+      - ConnectionStrings__Redis=redis:6379
+    networks:
+      - chat-network
+
+  db:
+    image: mcr.microsoft.com/mssql/server:2019-latest
+    ports:
+      - "1433:1433"
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=Pass@word1
+    volumes:
+      - sqldata:/var/opt/mssql
+    networks:
+      - chat-network
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    networks:
+      - chat-network
+
+networks:
+  chat-network:
+    driver: bridge
+
+volumes:
+  sqldata:
+  redisdata:
