@@ -1,0 +1,1 @@
+/CreateDb.sh & /opt/mssql/bin/sqlservr

@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   chatapp:
     build:
@@ -13,7 +11,7 @@ services:
       - "8081:443"
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
-      - ConnectionStrings__DefaultConnection=Server=db;Database=ChatDb;User=sa;Password=Pass@word1;MultipleActiveResultSets=true
+      - ConnectionStrings__DefaultConnection=Server=db;Database=ChatDb;User=sa;Password=Pass@word1;MultipleActiveResultSets=true;TrustServerCertificate=True
       - ConnectionStrings__Redis=redis:6379
     networks:
       - chat-network
@@ -25,8 +23,12 @@ services:
     environment:
       - ACCEPT_EULA=Y
       - SA_PASSWORD=Pass@word1
+    command: /bin/bash ./entrypoint.sh
     volumes:
       - sqldata:/var/opt/mssql
+      - ./entrypoint.sh:/entrypoint.sh
+      - ./CreateDb.sh:/CreateDb.sh
+      - ./ChatDb.sql:/ChatDb.sql
     networks:
       - chat-network
 
