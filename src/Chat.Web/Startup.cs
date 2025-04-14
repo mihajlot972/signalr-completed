@@ -46,7 +46,6 @@ namespace Chat.Web
                                .AllowCredentials();
                     });
             });
-        {
             services.AddDbContext<ApplicationDbContext>(options =>
                 options.UseSqlServer(Configuration.GetConnectionString("DefaultConnection")));
 

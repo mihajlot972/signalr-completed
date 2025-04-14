@@ -130,28 +130,63 @@ namespace Chat.Web.Hubs
         {
             try
             {
-                var user = await _redisService.GetUserByName(IdentityName);
-                if (user != null && user.CurrentRoom != roomName)
+                // Log the room name we're trying to join
+                Console.WriteLine($"Attempting to join room: {roomName}");
+                
+                // Get the user from Redis with the identity name
+                var identityName = IdentityName;
+                Console.WriteLine($"Identity name: {identityName}");
+                
+                var user = await _redisService.GetUserByName(identityName);
+                if (user == null)
                 {
-                    // Remove user from others list
+                    Console.WriteLine("User not found in Redis, likely not connected properly");
+                    await Clients.Caller.SendAsync("onError", "Failed to join chat room: User not found. Please refresh and try again.");
+                    return;
+                }
+                
+                Console.WriteLine($"User found: {user.UserName}, Current room: {user.CurrentRoom}");
+                
+                if (user.CurrentRoom != roomName)
+                {
+                    // Remove user from others list in current room
                     if (!string.IsNullOrEmpty(user.CurrentRoom))
+                    {
+                        Console.WriteLine($"Removing user from room: {user.CurrentRoom}");
                         await Clients.OthersInGroup(user.CurrentRoom).SendAsync("removeUser", user);
+                    }
 
                     // Join to new chat room
+                    Console.WriteLine($"Leaving current room: {user.CurrentRoom}");
                     await Leave(user.CurrentRoom);
+                    
+                    Console.WriteLine($"Adding to group: {roomName}");
                     await Groups.AddToGroupAsync(Context.ConnectionId, roomName);
                     
                     // Update user's current room in Redis
+                    Console.WriteLine($"Updating user room in Redis: {roomName}");
                     await _redisService.UpdateUserRoom(user.UserName, roomName);
                     user.CurrentRoom = roomName;
 
                     // Tell others to update their list of users
+                    Console.WriteLine($"Notifying others in room {roomName} about new user");
                     await Clients.OthersInGroup(roomName).SendAsync("addUser", user);
+                }
+                else
+                {
+                    Console.WriteLine($"User already in room: {roomName}");
                 }
             }
             catch (Exception ex)
             {
-                await Clients.Caller.SendAsync("onError", "You failed to join the chat room!" + ex.Message);
+                var errorMsg = $"Failed to join chat room: {ex.Message}";
+                if (ex.InnerException != null)
+                {
+                    errorMsg += $" Inner exception: {ex.InnerException.Message}";
+                }
+                Console.WriteLine($"Error in Join method: {errorMsg}");
+                Console.WriteLine($"Stack trace: {ex.StackTrace}");
+                await Clients.Caller.SendAsync("onError", errorMsg);
             }
         }
 
