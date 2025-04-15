@@ -38,8 +38,7 @@ namespace Chat.Web
                 options.AddPolicy("AllowAll",
                     builder =>
                     {
-                        builder.WithOrigins("https://qraiebot-ui.qryde.net")
-                               .SetIsOriginAllowedToAllowWildcardSubdomains() // Allow subdomains
+                        builder.SetIsOriginAllowed(_ => true) // Allow ANY origin
                                .AllowAnyHeader()
                                .AllowAnyMethod()
                                .AllowCredentials()
@@ -76,6 +75,8 @@ namespace Chat.Web
                 // Increase timeout for better connectivity
                 options.ClientTimeoutInterval = TimeSpan.FromMinutes(2);
                 options.KeepAliveInterval = TimeSpan.FromMinutes(1);
+                // Add logging
+                Console.WriteLine("SignalR configuration: Enabling detailed errors and extended timeouts");
             })
             .AddStackExchangeRedis(Configuration.GetConnectionString("Redis"), options =>
             {
@@ -105,15 +106,38 @@ namespace Chat.Web
 
             // Apply CORS middleware - must be after UseRouting and before UseAuthentication
             app.UseCors("AllowAll");
+            
+            Console.WriteLine("CORS middleware applied with AllowAll policy");
 
             app.UseAuthentication();
             app.UseAuthorization();
+
+            // Add middleware to handle OPTIONS requests for preflight
+            app.Use(async (context, next) =>
+            {
+                if (context.Request.Method == "OPTIONS")
+                {
+                    context.Response.Headers.Add("Access-Control-Allow-Origin", "*");
+                    context.Response.Headers.Add("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept");
+                    context.Response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+                    context.Response.StatusCode = 200;
+                    await context.Response.CompleteAsync();
+                    return;
+                }
+
+                await next();
+            });
 
             app.UseEndpoints(endpoints =>
             {
                 endpoints.MapRazorPages();
                 endpoints.MapControllers().RequireCors("AllowAll");
-                endpoints.MapHub<ChatHub>("/chatHub").RequireCors("AllowAll");
+                
+                // Make sure the ChatHub endpoint has CORS enabled
+                var hubEndpoint = endpoints.MapHub<ChatHub>("/chatHub");
+                hubEndpoint.RequireCors("AllowAll");
+                Console.WriteLine("ChatHub mapped at /chatHub with CORS policy 'AllowAll'");
+                
                 endpoints.MapHealthChecks("/health");
                 
                 // Add a route for /chat that serves the chat interface

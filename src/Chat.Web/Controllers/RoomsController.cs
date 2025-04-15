@@ -13,7 +13,8 @@ using Chat.Web.ViewModels;
 
 namespace Chat.Web.Controllers
 {
-    [Authorize]
+    // Temporarily removed Authorize to allow requests without authentication
+    // [Authorize]
     [Route("api/[controller]")]
     [ApiController]
     public class RoomsController : ControllerBase
@@ -55,12 +56,16 @@ namespace Chat.Web.Controllers
         }
 
         [HttpPost]
+        [AllowAnonymous] // Allow anonymous access to this endpoint
         public async Task<ActionResult<Room>> Create(RoomViewModel viewModel)
         {
             if (_context.Rooms.Any(r => r.Name == viewModel.Name))
                 return BadRequest("Invalid room name or room already exists");
 
-            var user = _context.Users.FirstOrDefault(u => u.UserName == User.Identity.Name);
+            // Handle both authenticated and anonymous users
+            var user = User.Identity?.IsAuthenticated == true
+                ? _context.Users.FirstOrDefault(u => u.UserName == User.Identity.Name)
+                : null;
             var room = new Room()
             {
                 Name = viewModel.Name,
