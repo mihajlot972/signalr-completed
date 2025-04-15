@@ -38,10 +38,12 @@ namespace Chat.Web
                 options.AddPolicy("AllowAll",
                     builder =>
                     {
-                        builder.SetIsOriginAllowed(_ => true) // Allow any origin
+                        builder.WithOrigins("https://qraiebot-ui.qryde.net")
+                               .SetIsOriginAllowedToAllowWildcardSubdomains() // Allow subdomains
                                .AllowAnyHeader()
                                .AllowAnyMethod()
-                               .AllowCredentials();
+                               .AllowCredentials()
+                               .SetPreflightMaxAge(TimeSpan.FromHours(24)); // Cache preflight results
                     });
             });
             services.AddDbContext<ApplicationDbContext>(options =>
@@ -69,8 +71,11 @@ namespace Chat.Web
             // Configure SignalR with Redis backplane for scaling
             services.AddSignalR(options =>
             {
-                // Allow any origin for WebSocket connections
+                // Add detailed errors for debugging
                 options.EnableDetailedErrors = true;
+                // Increase timeout for better connectivity
+                options.ClientTimeoutInterval = TimeSpan.FromMinutes(2);
+                options.KeepAliveInterval = TimeSpan.FromMinutes(1);
             })
             .AddStackExchangeRedis(Configuration.GetConnectionString("Redis"), options =>
             {
@@ -107,8 +112,8 @@ namespace Chat.Web
             app.UseEndpoints(endpoints =>
             {
                 endpoints.MapRazorPages();
-                endpoints.MapControllers();
-                endpoints.MapHub<ChatHub>("/chatHub");
+                endpoints.MapControllers().RequireCors("AllowAll");
+                endpoints.MapHub<ChatHub>("/chatHub").RequireCors("AllowAll");
                 endpoints.MapHealthChecks("/health");
                 
                 // Add a route for /chat that serves the chat interface
