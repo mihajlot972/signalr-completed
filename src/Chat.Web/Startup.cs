@@ -37,10 +37,10 @@ namespace Chat.Web
             // Add CORS services
             services.AddCors(options =>
             {
-                options.AddPolicy("AllowReactApp",
+                options.AddPolicy("AllowAll",
                     builder =>
                     {
-                        builder.WithOrigins("http://localhost:3000")
+                        builder.SetIsOriginAllowed(_ => true) // Allow any origin
                                .AllowAnyHeader()
                                .AllowAnyMethod()
                                .AllowCredentials();
@@ -69,11 +69,15 @@ namespace Chat.Web
             services.AddControllers();
             
             // Configure SignalR with Redis backplane for scaling
-            services.AddSignalR()
-                .AddStackExchangeRedis(Configuration.GetConnectionString("Redis"), options =>
-                {
-                    options.Configuration.ChannelPrefix = "ChatApp";
-                });
+            services.AddSignalR(options =>
+            {
+                // Allow any origin for WebSocket connections
+                options.EnableDetailedErrors = true;
+            })
+            .AddStackExchangeRedis(Configuration.GetConnectionString("Redis"), options =>
+            {
+                options.Configuration.ChannelPrefix = "ChatApp";
+            });
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
@@ -97,7 +101,7 @@ namespace Chat.Web
             app.UseRouting();
 
             // Apply CORS middleware - must be after UseRouting and before UseAuthentication
-            app.UseCors("AllowReactApp");
+            app.UseCors("AllowAll");
 
             app.UseAuthentication();
             app.UseAuthorization();
